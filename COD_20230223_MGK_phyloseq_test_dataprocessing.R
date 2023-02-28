@@ -230,7 +230,6 @@ table(nchar(getSequences(sta)))
 
 # Remove chimeric ASVs and construct a new chimera-free sequence table.
 st <- removeBimeraDenovo(sta, multi=TRUE, verbose=TRUE)
-sum(st)/sum(sta)
 
         # Were most reads retained during chimera removal? How about ASVs? 
 # 3.3 % of chimera were removed
@@ -248,8 +247,10 @@ getN <- function(x) sum(getUniques(x))
 track <- cbind(out, sapply(ddF, getN), sapply(ddR, getN), sapply(mm, getN), rowSums(st))
 colnames(track) <- c("input", "filtered", "denoisedF", "denoisedR", "merged", "nonchim")
 rownames(track) <- basename(fnFs)
+qc_new <- track %>% as.data.frame() %>% rownames_to_column(var = "sample_id") %>% mutate(sample_id = gsub("Raw_Read1.fq_Phipatanakul.|.fastq.gz", "", .$sample_id))
+write_csv(qc_new,  "/Users/minsikkim/Dropbox (Partners HealthCare)/Project_Baylor/1_Daily_Log/MGK/DAT_20230224_MGK_phyloseq_test_dataprocessing_reads_QC.csv")
 
-write_csv(track %>% as.data.frame(), "/Users/minsikkim/Dropbox (Partners HealthCare)/Project_Baylor/1_Daily_Log/MGK/DAT_20230224_MGK_phyloseq_test_dataprocessing_reads_QC.csv")
+
 
         # In this case, most reads should make it through the entire pipeline!
         # Most importantly, a large majority (>80% of reads) should merge successfully,
@@ -388,6 +389,7 @@ ggplot(compare_bar, aes(fill = Genus, y = abundance, x = data)) +
         geom_bar(position="stack", stat="identity") +
         facet_wrap(~data, scales = "free", ) +
         theme(legend.text = element_markdown()) +
+        scale_fill_manual(values = c("#a6cee3", "#1f78b4", "#b2df8a", "#33a02c", "#fb9a99", "#e31a1c", "#fdbf6f", "#ff7f00", "#cab2d6", "#6a3d9a", "#ffff99", "#b15928", "grey", "black")) +
 #        scale_x_discrete(limits = c("Theoretical", "Old phyloseq", "New phyloseq")) +
         ylab("Relative abundance") +
         xlab("Type of data")
@@ -398,7 +400,16 @@ compare_bar_unified_taxa$Genus <- ifelse(compare_bar_unified_taxa$Genus == "*Esc
                                          ifelse(compare_bar_unified_taxa$Genus == "*Limosilactobacillus*", "*Lactobacillus*",
                                                 compare_bar_unified_taxa$Genus)
                                          )
-
+subset(compare_bar_unified_taxa, compare_bar_unified_taxa$data != "phyloseq - ASV analyzed") %>% 
+ggplot(., aes(fill = Genus, y = abundance, x = data)) + 
+        theme_classic(base_size = 20, base_family = "serif") +
+        geom_bar(position="stack", stat="identity") +
+        facet_wrap(~data, scales = "free", ) +
+        theme(legend.text = element_markdown()) +
+        #        scale_x_discrete(limits = c("Theoretical", "Old phyloseq", "New phyloseq")) +
+        ylab("Relative abundance") +
+        scale_fill_manual(values = c("#a6cee3", "#1f78b4", "#b2df8a", "#33a02c", "#fb9a99", "#e31a1c", "#fdbf6f", "#ff7f00", "#cab2d6", "#6a3d9a", "#ffff99", "#b15928")) +
+        xlab("Type of data")
 
 ggplot(compare_bar_unified_taxa, aes(fill = Genus, y = abundance, x = data)) + 
         theme_classic(base_size = 12, base_family = "serif") +
@@ -409,6 +420,7 @@ ggplot(compare_bar_unified_taxa, aes(fill = Genus, y = abundance, x = data)) +
         ylab("Relative abundance") +
         scale_fill_manual(values = c("#a6cee3", "#1f78b4", "#b2df8a", "#33a02c", "#fb9a99", "#e31a1c", "#fdbf6f", "#ff7f00", "#cab2d6", "#6a3d9a", "#ffff99", "#b15928")) +
         xlab("Type of data")
+
 
 ggsave("/Users/minsikkim/Dropbox (Partners HealthCare)/Project_Analysis/phyloseq_test_of_skills/data_test/REP_20230224_MGK_phyloseq_testskill_dada2_compare.pdf",
         plot = last_plot(),
@@ -424,6 +436,56 @@ cbind({ps %>% sample_names()}[order({ps %>% sample_names()}, decreasing = T)],
 ps_newone <- subset_samples(ps, sampleID == "SICAS2.021T") %>% prune_taxa(taxa_sums(.) != 0, .)
 
 
+#comparing QC matrices
+
+old_qc <- read.csv("/Users/minsikkim/Dropbox (Partners HealthCare)/Project_Baylor/4_Data/1_Raw/Baylor_Processed/20170815_SICAS2_filter_dust_phyloseq_test_of_skills/data/Read_QC.txt", sep ="\t") %>% subset(., grepl("Phip", .$SampleID ))
+
+qc_new %>% gather(read_type, reads, input:nonchim, factor_key=TRUE) %>% 
+        ggplot(aes(x = read_type, y = reads, fill = read_type)) +
+        geom_violin(draw_quantiles = T, ) +
+        theme_classic(base_family = "serif", base_size = 20) +
+        theme(axis.title.y = element_markdown()) +
+        ylab("Reads") +
+        xlab("Read type") +
+        facet_wrap(~read_type, scales = "free_x", nrow = 1) +
+        theme(axis.title.y = element_markdown(), legend.title = element_markdown()) +
+        labs(fill = "Read type")
+        
+
+
+qc_old_plot <- old_qc %>% gather(read_type, reads, Raw:Unmapped, factor_key=TRUE) 
+qc_old_plot$facet <- ifelse(qc_old_plot$read_type == "Raw", "Raw reads",
+                            "Mapped + unmapped reads") %>% factor(levels = c("Raw reads", "Mapped + unmapped reads"))
+
+ggplot(qc_old_plot, aes(x = SampleID, y = reads, fill = read_type)) +
+        geom_bar(stat = "identity") +
+        facet_wrap(~facet, scales = "free_x", nrow = 1) +
+        theme_classic(base_family = "serif", base_size = 20) +
+        theme(axis.title.y = element_markdown(), legend.title = element_markdown()) +
+        ylab("Reads") +
+        xlab("Sample ID") +
+        labs(fill = "Read type")
+
+ps %>% otu_table %>% rowSums() %>% data.frame() %>% .$.
+qc_new$Mapped <- ps %>% otu_table %>% rowSums() %>% data.frame() %>% .$.
+qc_new$Unmapped <- qc_new$nonchim - qc_new$Mapped
+qc_new$Mapped
+qc_new$proportion <- qc_new$Mapped /qc_new$input
+qc_new$proportion %>% hist(main = "Histogram - proportoin of mapped / raw reads")
+qc_new_plot <- qc_new %>% select(c("sample_id", "input", "Mapped", "Unmapped")) %>%
+        gather(read_type, reads, input:Unmapped, factor_key=TRUE)# %>% 
+qc_new_plot$facet <- ifelse(qc_new_plot$read_type == "input", "Raw reads",
+                      "Mapped + unmapped reads") %>% factor(levels = c("Raw reads", "Mapped + unmapped reads"))
+ggplot(qc_new_plot, aes(x = sample_id, y = reads, fill = read_type)) +
+        geom_bar(stat = "identity") +
+        facet_wrap(~facet, scales = "free_x", nrow = 1) +
+        theme_classic(base_family = "serif", base_size = 20) +
+        theme(axis.title.y = element_markdown(), legend.title = element_markdown()) +
+        ylab("Reads") +
+        xlab("Sample ID") +
+        labs(fill = "Read type")
+ps %>% refseq()
+ps_old
 #This sample was missing in the previous set.... Double-check the total read counts
 
 sample_data(ps)$sequencing_depth <- otu_table %>% rowSums()
